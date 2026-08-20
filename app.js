@@ -6,29 +6,61 @@ const DROP_SHOTS=[['front','Exterior · Frontal'],['rear','Exterior · Trasera']
 function fresh(){return{mode:'',driver:'',plate:'',apt:null,reasons:[],interior:[],exterior:[],desc:{interior:'',exterior:'',mechanics:'',bodywork:''},incidentPhotos:{interior:[],exterior:[],mechanics:[],bodywork:[]},newDamage:null,drop:{exterior:null,interior:null,fuel:null,breakdowns:null,bodywork:null},dropPhotos:{}}}
 let s=fresh();
 const app=document.getElementById('app');
+const fx=document.getElementById('fx');
 
 function opts(a,v){return'<option value="">Selecciona</option>'+a.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}
-function multi(g,x){return`<button class="btn choice ${s[g].includes(x)?'active':''}" onclick="toggleSub('${g}','${x}')">${x}</button>`}
-function gallery(k){let a=s.incidentPhotos[k];return`<div class="counter">Fotos: ${a.length}/5 · mínimo 1</div>${a.length?`<div class="photos">${a.map((p,i)=>`<div class="photo"><img src="${p}"><button onclick="removeIncidentPhoto('${k}',${i})">×</button></div>`).join('')}</div>`:''}<div id="incident-cam-${k}"></div>${a.length<5?`<button class="btn alt" onclick="startIncidentCamera('${k}')">${a.length?'Añadir otra foto':'Hacer foto ahora'}</button>`:'<p class="small">Máximo de 5 fotos alcanzado.</p>'}`}
+function multi(g,x){return`<button class="btn choice ${s[g].includes(x)?'active':''}" onclick="toggleSub('${g}','${x}')">${s[g].includes(x)?'✓ ':''}${x}</button>`}
+function missionProgress(){
+  if(!s.mode)return 0;
+  if(s.mode==='pickup'){
+    let p=12;if(s.driver)p+=16;if(s.plate)p+=16;if(s.apt!==null)p+=26;
+    if(s.apt===true)p=88;
+    if(s.apt===false&&s.reasons.length)p+=10;
+    const photoCount=Object.values(s.incidentPhotos).reduce((n,a)=>n+a.length,0);if(photoCount)p+=12;
+    return Math.min(94,p);
+  }
+  let p=12;if(s.driver)p+=12;if(s.plate)p+=12;
+  p+=Object.values(s.drop).filter(v=>v!==null).length*5;
+  p+=Object.keys(s.dropPhotos).filter(k=>s.dropPhotos[k]).length*3;
+  return Math.min(94,p);
+}
+function missionHeader(title){const p=missionProgress();return`<div class="mission-title"><div><div class="mission-tag">Misión en curso</div><h2>${title}</h2></div><strong>${p}%</strong></div><div class="progress"><i style="width:${p}%"></i></div>`}
+function showFx(kind){
+  if(!fx)return;
+  const good=kind==='good';
+  fx.innerHTML=`<div class="overlay" onclick="clearFx()"><div class="overlay-card ${good?'good':'sad'}"><span class="overlay-icon">${good?'🏆':'😕'}</span><h2>${good?'¡VEHÍCULO APTO!':'NO ESTÁ APTO'}</h2><p>${good?'¡Genial! Está listo para trabajar.':'Gracias por detectarlo. Vamos a documentarlo.'}</p></div></div>`;
+  if(good)confetti();
+  setTimeout(clearFx,1250);
+}
+function clearFx(){if(fx)fx.innerHTML=''}
+function confetti(){
+  const colors=['#ef4f87','#30c7e8','#39dc8b','#ffc857','#ffffff'];
+  for(let i=0;i<28;i++){
+    const e=document.createElement('i');e.className='confetti';e.style.left=(Math.random()*100)+'vw';e.style.background=colors[i%colors.length];e.style.animationDelay=(Math.random()*.35)+'s';e.style.transform=`rotate(${Math.random()*180}deg)`;document.body.appendChild(e);setTimeout(()=>e.remove(),2100);
+  }
+}
+function setApt(v){s.apt=v;render();showFx(v?'good':'sad')}
+
+function gallery(k){let a=s.incidentPhotos[k];return`<div class="counter">📸 Fotos: ${a.length}/5 · mínimo 1</div>${a.length?`<div class="photos">${a.map((p,i)=>`<div class="photo"><img src="${p}"><button onclick="removeIncidentPhoto('${k}',${i})">×</button></div>`).join('')}</div>`:''}<div id="incident-cam-${k}"></div>${a.length<5?`<button class="btn alt" onclick="startIncidentCamera('${k}')">📷 ${a.length?'Añadir otra foto':'Hacer foto ahora'}</button>`:'<p class="small">Máximo de 5 fotos alcanzado.</p>'}`}
 function cat(n){
   if(!s.reasons.includes(n))return'';
-  if(n==='Limpieza interior')return`<div class="subbox"><strong>Limpieza interior</strong><div class="stack">${['Salpicadero','Asientos','Alfombras','Detalles a fondo','Aguas usadas sin vaciar'].map(x=>multi('interior',x)).join('')}</div><label class="label">Breve descripción</label><textarea oninput="s.desc.interior=this.value">${s.desc.interior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('interior')}</div>`;
-  if(n==='Limpieza exterior')return`<div class="subbox"><strong>Limpieza exterior</strong><div class="stack">${['Plancha','Cristales','Llantas','Bajos'].map(x=>multi('exterior',x)).join('')}</div><label class="label">Breve descripción</label><textarea oninput="s.desc.exterior=this.value">${s.desc.exterior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('exterior')}</div>`;
-  if(n==='Mecánica')return`<div class="subbox"><strong>Mecánica</strong><label class="label">Describe la avería o anomalía</label><textarea oninput="s.desc.mechanics=this.value">${s.desc.mechanics}</textarea><label class="label">Evidencia fotográfica</label>${gallery('mechanics')}</div>`;
+  if(n==='Limpieza interior')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🧽 Limpieza interior</strong><div class="stack">${['Salpicadero','Asientos','Alfombras','Detalles a fondo','Aguas usadas sin vaciar'].map(x=>multi('interior',x)).join('')}</div><label class="label">Breve descripción</label><textarea placeholder="Ej. Alfombras sucias..." oninput="s.desc.interior=this.value">${s.desc.interior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('interior')}</div>`;
+  if(n==='Limpieza exterior')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>✨ Limpieza exterior</strong><div class="stack">${['Plancha','Cristales','Llantas','Bajos'].map(x=>multi('exterior',x)).join('')}</div><label class="label">Breve descripción</label><textarea placeholder="Ej. Cristales sucios..." oninput="s.desc.exterior=this.value">${s.desc.exterior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('exterior')}</div>`;
+  if(n==='Mecánica')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🔧 Mecánica</strong><label class="label">Describe la avería o anomalía</label><textarea placeholder="Describe qué has observado..." oninput="s.desc.mechanics=this.value">${s.desc.mechanics}</textarea><label class="label">Evidencia fotográfica</label>${gallery('mechanics')}</div>`;
   const known=KNOWN_DAMAGE[s.plate]||[];
-  return`<div class="subbox"><strong>Plancha</strong><div class="known"><strong>Daños ya conocidos</strong>${known.length?`<ul>${known.map(x=>`<li>${x}</li>`).join('')}</ul>`:'<p class="small">Se mostrarán aquí al conectar el histórico de daños.</p>'}</div><label class="label">¿Hay un daño nuevo?</label><div class="grid"><button class="btn choice ${s.newDamage===false?'active':''}" onclick="s.newDamage=false;render()">No, daño conocido</button><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;render()">Sí, daño nuevo</button></div><label class="label">Breve descripción</label><textarea oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica</label>${gallery('bodywork')}</div>`;
+  return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🚘 Plancha</strong><div class="known"><strong>Daños ya conocidos</strong>${known.length?`<ul>${known.map(x=>`<li>${x}</li>`).join('')}</ul>`:'<p class="small">Se mostrarán aquí al conectar el histórico de daños.</p>'}</div><label class="label">¿Hay un daño nuevo?</label><div class="grid"><button class="btn choice ${s.newDamage===false?'active':''}" onclick="s.newDamage=false;render()">✓ Daño conocido</button><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;render()">⚠️ Daño nuevo</button></div><label class="label">Breve descripción</label><textarea placeholder="Describe el daño..." oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica</label>${gallery('bodywork')}</div>`;
 }
-function dropEvidence(){return DROP_SHOTS.map(([k,l])=>`<div class="evidence ${s.dropPhotos[k]?'done':''}"><strong>${l}</strong>${s.dropPhotos[k]?`<div class="cam"><img src="${s.dropPhotos[k]}"></div><button class="btn alt" onclick="startDropCamera('${k}')">Repetir foto</button>`:`<div id="drop-cam-${k}"></div><button class="btn alt" onclick="startDropCamera('${k}')">Hacer foto ahora</button>`}</div>`).join('')}
+function dropEvidence(){return DROP_SHOTS.map(([k,l],i)=>`<div class="evidence ${s.dropPhotos[k]?'done':''}"><div class="section-kicker">Foto ${i+1} de 9</div><strong>${l}</strong>${s.dropPhotos[k]?`<div class="cam"><img src="${s.dropPhotos[k]}"></div><button class="btn alt" onclick="startDropCamera('${k}')">↻ Repetir foto</button>`:`<div id="drop-cam-${k}"></div><button class="btn alt" onclick="startDropCamera('${k}')">📷 Hacer foto ahora</button>`}</div>`).join('')}
 
 function render(){
-  if(!s.mode){app.innerHTML=`<div class="card"><h2>¿Qué vas a hacer?</h2><div class="grid"><button class="btn primary" onclick="setMode('pickup')">Recojo el vehículo</button><button class="btn alt" onclick="setMode('dropoff')">Dejo el vehículo</button></div></div>`;return}
-  let h=`<div class="card"><h2>${s.mode==='pickup'?'Recogida':'Dejada'} de vehículo</h2><label class="label">Conductor</label><select onchange="s.driver=this.value">${opts(DRIVERS,s.driver)}</select><label class="label">Matrícula</label><select onchange="s.plate=this.value;render()">${opts(PLATES,s.plate)}</select></div>`;
+  if(!s.mode){app.innerHTML=`<div class="card"><div class="section-kicker">Nueva misión</div><h2>🎮 ¿Qué vas a hacer?</h2><p class="small">Elige una misión y completa el control en pocos minutos.</p><div class="grid mission-buttons"><button class="btn pickup" onclick="setMode('pickup')"><span class="mission-icon">🚙</span><b>RECOGER<br>VEHÍCULO</b><small>Revisión antes de iniciar servicio</small></button><button class="btn dropoff" onclick="setMode('dropoff')"><span class="mission-icon">🏁</span><b>DEJAR<br>VEHÍCULO</b><small>Deja todo listo para el siguiente</small></button></div></div>`;return}
+  let h=`<div class="card">${missionHeader(s.mode==='pickup'?'Recoger vehículo':'Dejar vehículo')}<label class="label">👤 Conductor</label><select onchange="s.driver=this.value;render()">${opts(DRIVERS,s.driver)}</select><label class="label">🚘 Matrícula</label><select onchange="s.plate=this.value;render()">${opts(PLATES,s.plate)}</select></div>`;
   if(s.mode==='pickup'){
-    h+=`<div class="card"><h2>¿El vehículo está apto para trabajar?</h2><div class="grid"><button class="btn choice ${s.apt===true?'active':''}" onclick="s.apt=true;render()">Sí, está apto</button><button class="btn choice ${s.apt===false?'active':''}" onclick="s.apt=false;render()">No está apto</button></div>${s.apt===false?`<div class="bad"><strong>¿Por qué no está apto?</strong><div class="stack">${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(r=>`<button class="btn choice ${s.reasons.includes(r)?'active':''}" onclick="toggleReason('${r}')">${r}</button>`).join('')}</div>${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(cat).join('')}</div>`:''}</div>`;
+    h+=`<div class="card"><div class="section-kicker">Decisión clave</div><h2>¿El vehículo está apto para trabajar?</h2><div class="grid"><button class="btn choice ${s.apt===true?'active':''}" onclick="setApt(true)">✅ Sí, está apto</button><button class="btn choice ${s.apt===false?'active':''}" onclick="setApt(false)">⚠️ No está apto</button></div>${s.apt===true?`<div class="status-banner good"><span class="emoji">🎉</span><h3>¡Todo en orden!</h3><p class="small">Vehículo listo para trabajar.</p></div>`:''}${s.apt===false?`<div class="status-banner bad-news"><span class="emoji">😕</span><h3>Hay algo que revisar</h3><p class="small">Detectarlo es hacer bien la inspección. Documentemos el motivo.</p></div><div class="bad"><strong>¿Por qué no está apto?</strong><div class="stack">${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(r=>`<button class="btn choice ${s.reasons.includes(r)?'active':''}" onclick="toggleReason('${r}')">${s.reasons.includes(r)?'✓ ':''}${r}</button>`).join('')}</div>${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(cat).join('')}</div>`:''}</div>`;
   } else {
-    h+=`<div class="card"><h2>Checklist de dejada</h2>${[['exterior','Limpieza exterior correcta'],['interior','Limpieza interior correcta'],['fuel','Repostado correcto'],['breakdowns','Sin averías'],['bodywork','Sin incidencias de plancha']].map(([k,l])=>`<div style="margin-bottom:14px"><span class="label">${l}</span><div class="grid"><button class="btn choice ${s.drop[k]===true?'active':''}" onclick="setDrop('${k}',true)">Sí</button><button class="btn choice ${s.drop[k]===false?'active':''}" onclick="setDrop('${k}',false)">No</button></div></div>`).join('')}</div><div class="card"><h2>Evidencia de la dejada</h2><p class="small">9 fotos obligatorias, hechas ahora desde la cámara.</p>${dropEvidence()}</div>`;
+    h+=`<div class="card"><div class="section-kicker">Nivel 1 · Checklist</div><h2>Deja el vehículo preparado</h2>${[['exterior','✨ Limpieza exterior correcta'],['interior','🧽 Limpieza interior correcta'],['fuel','⛽ Repostado correcto'],['breakdowns','🔧 Sin averías'],['bodywork','🚘 Sin incidencias de plancha']].map(([k,l],i)=>`<div class="check-row"><span class="label">${i+1}. ${l}</span><div class="grid"><button class="btn choice ${s.drop[k]===true?'active':''}" onclick="setDrop('${k}',true)">✅ Sí</button><button class="btn choice ${s.drop[k]===false?'active':''}" onclick="setDrop('${k}',false)">⚠️ No</button></div></div>`).join('')}</div><div class="card"><div class="section-kicker">Nivel 2 · Evidencia</div><h2>📸 Fotos finales</h2><p class="small">9 fotos obligatorias hechas ahora desde la cámara. Cada foto suma progreso a la misión.</p>${dropEvidence()}</div>`;
   }
-  h+=`<button class="btn primary" onclick="finish()">Finalizar y guardar</button><button class="btn alt" style="margin-top:10px" onclick="resetAll()">Cancelar</button>`;
+  h+=`<button class="btn primary" onclick="finish()">🏁 FINALIZAR Y GUARDAR</button><button class="btn alt" style="margin-top:10px" onclick="resetAll()">Cancelar misión</button>`;
   app.innerHTML=h;
 }
 function setMode(m){s.mode=m;render()}
@@ -50,7 +82,7 @@ async function camera(id,onshot){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
     const el=document.getElementById(id);
-    el.innerHTML=`<div class="cam"><video id="v-${id}" autoplay playsinline muted></video></div><button class="btn primary" id="shot-${id}">Hacer foto</button><button class="btn alt" style="margin-top:8px" id="cancel-${id}">Cancelar</button>`;
+    el.innerHTML=`<div class="cam"><video id="v-${id}" autoplay playsinline muted></video></div><button class="btn primary" id="shot-${id}">📸 Hacer foto</button><button class="btn alt" style="margin-top:8px" id="cancel-${id}">Cancelar</button>`;
     const v=document.getElementById('v-'+id);v.srcObject=stream;
     document.getElementById('shot-'+id).onclick=()=>{onshot(captureVideoFrame(v));stream.getTracks().forEach(t=>t.stop());render()};
     document.getElementById('cancel-'+id).onclick=()=>{stream.getTracks().forEach(t=>t.stop());render()};
@@ -95,7 +127,7 @@ async function uploadAllPhotos(){
 async function finish(){
   if(!validate())return;
   const snapshot=JSON.parse(JSON.stringify(s));
-  app.innerHTML=`<div class="card saving"><h2>Guardando inspección…</h2><p>Subiendo fotografías y registrando los datos. No cierres esta pantalla.</p></div>`;
+  app.innerHTML=`<div class="card saving"><div class="section-kicker">Guardando misión</div><h2>Subiendo inspección…</h2><p class="small">Fotografías y datos se están guardando de forma segura. No cierres esta pantalla.</p></div>`;
   try{
     const photos=await uploadAllPhotos();
     const payload={mode:snapshot.mode,driver:snapshot.driver,plate:snapshot.plate,apt:snapshot.mode==='pickup'?snapshot.apt:null,reasons:snapshot.reasons,details:{interior:snapshot.interior,exterior:snapshot.exterior,descriptions:snapshot.desc,newDamage:snapshot.newDamage},photos,checklist:snapshot.mode==='dropoff'?snapshot.drop:{}};
@@ -106,10 +138,11 @@ async function finish(){
     if(snapshot.mode==='pickup'&&result.link){
       extra=result.link.scoreStatus==='auto'?'<p class="small">La dejada anterior ha quedado validada automáticamente.</p>':'<p class="small">La dejada anterior ha quedado pendiente de revisión por oficina.</p>';
     }
-    app.innerHTML=`<div class="card"><h2>Registro guardado</h2><p>${snapshot.mode==='pickup'?'Recogida':'Dejada'} de ${snapshot.plate} registrada correctamente.</p>${extra}<button class="btn primary" onclick="resetAll()">Nueva inspección</button></div>`;
+    confetti();
+    app.innerHTML=`<div class="card"><div class="reward"><div class="trophy">🏆</div><div class="mission-tag">100% completado</div><h2>¡MISIÓN COMPLETADA!</h2><strong>Gran trabajo</strong><p>${snapshot.mode==='pickup'?'Recogida':'Dejada'} de <b>${snapshot.plate}</b> registrada correctamente.</p>${extra}</div><button class="btn primary" style="margin-top:14px" onclick="resetAll()">🎮 Nueva misión</button></div>`;
   }catch(e){
     console.error(e);s=snapshot;render();alert('No se ha podido guardar. No se ha borrado el formulario. Comprueba la conexión y vuelve a intentarlo.\n\n'+e.message);
   }
 }
-function resetAll(){s=fresh();render()}
+function resetAll(){clearFx();s=fresh();render()}
 render();
