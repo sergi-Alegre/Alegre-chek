@@ -5,6 +5,7 @@ const DROP_SHOTS=[['front','Exterior · Frontal'],['rear','Exterior · Trasera']
 
 function fresh(){return{mode:'',driver:'',plate:'',apt:null,reasons:[],interior:[],exterior:[],desc:{interior:'',exterior:'',mechanics:'',bodywork:''},incidentPhotos:{interior:[],exterior:[],mechanics:[],bodywork:[]},newDamage:null,drop:{exterior:null,interior:null,fuel:null,breakdowns:null,bodywork:null},dropPhotos:{}}}
 let s=fresh();
+let knownDamagePlate='',knownDamageLoading=false;
 const app=document.getElementById('app');
 const fx=document.getElementById('fx');
 
@@ -41,6 +42,26 @@ function confetti(){
 }
 function setApt(v){s.apt=v;render();showFx(v?'good':'sad')}
 
+async function loadKnownDamagesForPlate(plate){
+  const p=String(plate||'').trim();
+  if(!p||knownDamagePlate===p||knownDamageLoading)return;
+  knownDamageLoading=true;
+  try{
+    const r=await fetch('/api/known-damages?plate='+encodeURIComponent(p),{cache:'no-store'});
+    const j=await r.json().catch(()=>({damages:[]}));
+    if(!r.ok)throw new Error(j.error||'No se pudieron cargar los daños conocidos');
+    KNOWN_DAMAGE[p]=(j.damages||[]).map(d=>`${d.zone}: ${d.description}`);
+    knownDamagePlate=p;
+    if(s.mode==='pickup'&&s.plate===p)render();
+  }catch(e){
+    console.warn('known damages unavailable',e);
+    KNOWN_DAMAGE[p]=[];
+    knownDamagePlate=p;
+  }finally{
+    knownDamageLoading=false;
+  }
+}
+
 function gallery(k){let a=s.incidentPhotos[k];return`<div class="counter">📸 Fotos: ${a.length}/5 · mínimo 1</div>${a.length?`<div class="photos">${a.map((p,i)=>`<div class="photo"><img src="${p}"><button onclick="removeIncidentPhoto('${k}',${i})">×</button></div>`).join('')}</div>`:''}<div id="incident-cam-${k}"></div>${a.length<5?`<button class="btn alt" onclick="startIncidentCamera('${k}')">📷 ${a.length?'Añadir otra foto':'Hacer foto ahora'}</button>`:'<p class="small">Máximo de 5 fotos alcanzado.</p>'}`}
 function cat(n){
   if(!s.reasons.includes(n))return'';
@@ -48,7 +69,8 @@ function cat(n){
   if(n==='Limpieza exterior')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>✨ Limpieza exterior</strong><div class="stack">${['Plancha','Cristales','Llantas','Bajos'].map(x=>multi('exterior',x)).join('')}</div><label class="label">Breve descripción</label><textarea placeholder="Ej. Cristales sucios..." oninput="s.desc.exterior=this.value">${s.desc.exterior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('exterior')}</div>`;
   if(n==='Mecánica')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🔧 Mecánica</strong><label class="label">Describe la avería o anomalía</label><textarea placeholder="Describe qué has observado..." oninput="s.desc.mechanics=this.value">${s.desc.mechanics}</textarea><label class="label">Evidencia fotográfica</label>${gallery('mechanics')}</div>`;
   const known=KNOWN_DAMAGE[s.plate]||[];
-  return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🚘 Plancha</strong><div class="known"><strong>Daños ya conocidos</strong>${known.length?`<ul>${known.map(x=>`<li>${x}</li>`).join('')}</ul>`:'<p class="small">Se mostrarán aquí al conectar el histórico de daños.</p>'}</div><label class="label">¿Hay un daño nuevo?</label><div class="grid"><button class="btn choice ${s.newDamage===false?'active':''}" onclick="s.newDamage=false;render()">✓ Daño conocido</button><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;render()">⚠️ Daño nuevo</button></div><label class="label">Breve descripción</label><textarea placeholder="Describe el daño..." oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica</label>${gallery('bodywork')}</div>`;
+  const knownMsg=knownDamageLoading&&knownDamagePlate!==s.plate?'<p class="small">Consultando daños conocidos…</p>':'<p class="small">No hay daños conocidos activos para esta matrícula.</p>';
+  return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🚘 Plancha</strong><div class="known"><strong>Daños ya conocidos</strong>${known.length?`<ul>${known.map(x=>`<li>${x}</li>`).join('')}</ul>`:knownMsg}</div><label class="label">¿Hay un daño nuevo?</label><div class="grid"><button class="btn choice ${s.newDamage===false?'active':''}" onclick="s.newDamage=false;render()">✓ Daño conocido</button><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;render()">⚠️ Daño nuevo</button></div><label class="label">Breve descripción</label><textarea placeholder="Describe el daño..." oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica</label>${gallery('bodywork')}</div>`;
 }
 function dropEvidence(){return DROP_SHOTS.map(([k,l],i)=>`<div class="evidence ${s.dropPhotos[k]?'done':''}"><div class="section-kicker">Foto ${i+1} de 9</div><strong>${l}</strong>${s.dropPhotos[k]?`<div class="cam"><img src="${s.dropPhotos[k]}"></div><button class="btn alt" onclick="startDropCamera('${k}')">↻ Repetir foto</button>`:`<div id="drop-cam-${k}"></div><button class="btn alt" onclick="startDropCamera('${k}')">📷 Hacer foto ahora</button>`}</div>`).join('')}
 
@@ -62,6 +84,7 @@ function render(){
   }
   h+=`<button class="btn primary" onclick="finish()">🏁 FINALIZAR Y GUARDAR</button><button class="btn alt" style="margin-top:10px" onclick="resetAll()">Cancelar misión</button>`;
   app.innerHTML=h;
+  if(s.mode==='pickup'&&s.plate)loadKnownDamagesForPlate(s.plate);
 }
 function setMode(m){s.mode=m;render()}
 function setDrop(k,v){s.drop[k]=v;render()}
@@ -144,5 +167,5 @@ async function finish(){
     console.error(e);s=snapshot;render();alert('No se ha podido guardar. No se ha borrado el formulario. Comprueba la conexión y vuelve a intentarlo.\n\n'+e.message);
   }
 }
-function resetAll(){clearFx();s=fresh();render()}
+function resetAll(){clearFx();s=fresh();knownDamagePlate='';render()}
 render();
