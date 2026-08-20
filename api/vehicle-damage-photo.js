@@ -5,13 +5,26 @@ import { officeAuthorized, officeConfigured } from '../lib/office-auth.js';
 
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).send('Method not allowed');
-  if(!officeConfigured())return res.status(503).send('Office PIN not configured');
-  if(!officeAuthorized(req))return res.status(401).send('Unauthorized');
   try{
-    const id=String(req.query.id||'');if(!id)return res.status(400).send('Missing id');
-    const sql=neon(process.env.DATABASE_URL);const rows=await sql`SELECT photo_url FROM vehicle_damages WHERE id=${id} LIMIT 1`;
+    const id=String(req.query.id||'');
+    if(!id)return res.status(400).send('Missing id');
+    if(!process.env.DATABASE_URL)return res.status(503).send('Database not configured');
+    const sql=neon(process.env.DATABASE_URL);
+    const rows=await sql`SELECT photo_url,status FROM vehicle_damages WHERE id=${id} LIMIT 1`;
     if(!rows.length)return res.status(404).send('Not found');
-    const result=await get(rows[0].photo_url,{access:'private'});if(result?.statusCode!==200)return res.status(404).send('Not found');
-    res.setHeader('Content-Type',result.blob.contentType||'image/jpeg');res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');Readable.fromWeb(result.stream).pipe(res);
-  }catch(e){console.error('vehicle damage photo error',e);return res.status(500).send('Photo unavailable')}
+    const damage=rows[0];
+    if(damage.status!=='active'){
+      if(!officeConfigured())return res.status(503).send('Office PIN not configured');
+      if(!officeAuthorized(req))return res.status(401).send('Unauthorized');
+    }
+    const result=await get(damage.photo_url,{access:'private'});
+    if(result?.statusCode!==200)return res.status(404).send('Not found');
+    res.setHeader('Content-Type',result.blob.contentType||'image/jpeg');
+    res.setHeader('Cache-Control',damage.status==='active'?'private, max-age=120':'private, max-age=300');
+    res.setHeader('X-Content-Type-Options','nosniff');
+    Readable.fromWeb(result.stream).pipe(res);
+  }catch(e){
+    console.error('vehicle damage photo error',e);
+    return res.status(500).send('Photo unavailable');
+  }
 }
