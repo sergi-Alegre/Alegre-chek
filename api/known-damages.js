@@ -18,7 +18,7 @@ export default async function handler(req,res){
     const sql=sqlClient();
     await ensureSchema(sql);
     const rows=await sql`SELECT id,plate,zone,description,created_at FROM vehicle_damages WHERE plate=${plate} AND status='active' ORDER BY created_at DESC`;
-    return res.status(200).json({damages:rows.map(r=>({...r,photoSrc:`/api/known-damage-photo?id=${encodeURIComponent(r.id)}`}))});
+    return res.status(200).json({damages:rows.map(r=>({...r,photoSrc:`/api/vehicle-damage-photo?id=${encodeURIComponent(r.id)}`}))});
   }catch(e){
     console.error('known damages error',e);
     return res.status(500).json({error:'No se pudieron consultar los daños conocidos'});
