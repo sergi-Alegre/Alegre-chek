@@ -1,8 +1,9 @@
 import { neon } from '@neondatabase/serverless';
 import { officeAuthorized, officeConfigured } from '../lib/office-auth.js';
 
+const PHOTO_LABELS={front:'Frontal',rear:'Trasera',left:'Lateral izquierdo',right:'Lateral derecho',cabFront:'Interior delantero',cabRear:'Interior trasero',matsFront:'Alfombras delanteras',matsRear:'Alfombras traseras',dashboard:'Cuadro / combustible'};
 function sqlClient(){if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL missing');return neon(process.env.DATABASE_URL)}
-function photoRefs(id,photos){const out=[];if(photos?.dropoff){for(const [k] of Object.entries(photos.dropoff))out.push({label:k,path:`dropoff.${k}`,src:`/api/office-photo?id=${encodeURIComponent(id)}&path=${encodeURIComponent(`dropoff.${k}`)}`})}if(photos?.incidents){for(const [k,a] of Object.entries(photos.incidents)){(Array.isArray(a)?a:[]).forEach((_,i)=>out.push({label:`${k} ${i+1}`,path:`incidents.${k}.${i}`,src:`/api/office-photo?id=${encodeURIComponent(id)}&path=${encodeURIComponent(`incidents.${k}.${i}`)}`}))}}return out}
+function photoRefs(id,photos,comments={}){const out=[];if(photos?.dropoff){for(const [k] of Object.entries(photos.dropoff)){const note=String(comments?.[k]||'').trim();out.push({label:note?`${PHOTO_LABELS[k]||k} · 💬 ${note}`:k,path:`dropoff.${k}`,src:`/api/office-photo?id=${encodeURIComponent(id)}&path=${encodeURIComponent(`dropoff.${k}`)}`})}}if(photos?.incidents){for(const [k,a] of Object.entries(photos.incidents)){(Array.isArray(a)?a:[]).forEach((_,i)=>out.push({label:`${k} ${i+1}`,path:`incidents.${k}.${i}`,src:`/api/office-photo?id=${encodeURIComponent(id)}&path=${encodeURIComponent(`incidents.${k}.${i}`)}`}))}}return out}
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
   if(!officeConfigured())return res.status(503).json({error:'OFFICE_PIN_NOT_CONFIGURED'});
@@ -33,7 +34,7 @@ export default async function handler(req,res){
       FROM inspections
       WHERE mode='dropoff' AND to_char(created_at AT TIME ZONE 'Europe/Madrid','YYYY-MM')=${month}
       GROUP BY driver ORDER BY average DESC NULLS LAST,evaluated_dropoffs DESC,driver ASC`;
-    const mapRow=r=>({...r,dropoffPhotos:photoRefs(r.id,r.photos),pickupPhotos:r.pickup_id?photoRefs(r.pickup_id,r.pickup_photos):[]});
+    const mapRow=r=>({...r,dropoffPhotos:photoRefs(r.id,r.photos,r.checklist?.photoComments||{}),pickupPhotos:r.pickup_id?photoRefs(r.pickup_id,r.pickup_photos):[]});
     return res.status(200).json({month,reviews:reviews.map(mapRow),dropoffs:dropoffs.map(mapRow),ranking});
   }catch(e){console.error('office data error',e);return res.status(500).json({error:'Office data unavailable'})}
 }
