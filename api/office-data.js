@@ -13,11 +13,15 @@ export default async function handler(req,res){
     const reviews=await sql`
       SELECT d.id,d.driver,d.plate,d.created_at,d.checklist,d.photos,d.score_status,d.review_reason,
              p.id AS pickup_id,p.driver AS pickup_driver,p.created_at AS pickup_created_at,p.apt AS pickup_apt,p.reasons AS pickup_reasons,p.details AS pickup_details,p.photos AS pickup_photos
-      FROM inspections d
-      JOIN inspections p ON p.id=d.linked_pickup_id
+      FROM inspections d JOIN inspections p ON p.id=d.linked_pickup_id
       WHERE d.mode='dropoff' AND d.score_status='review'
-      ORDER BY d.created_at ASC
-      LIMIT 100`;
+      ORDER BY d.created_at ASC LIMIT 100`;
+    const dropoffs=await sql`
+      SELECT d.id,d.driver,d.plate,d.created_at,d.checklist,d.photos,d.score_status,d.score,d.review_reason,d.reviewed_by,d.review_notes,d.reviewed_at,
+             p.id AS pickup_id,p.driver AS pickup_driver,p.created_at AS pickup_created_at,p.apt AS pickup_apt,p.reasons AS pickup_reasons,p.details AS pickup_details,p.photos AS pickup_photos
+      FROM inspections d LEFT JOIN inspections p ON p.id=d.linked_pickup_id
+      WHERE d.mode='dropoff'
+      ORDER BY d.created_at DESC LIMIT 300`;
     const ranking=await sql`
       SELECT driver,COUNT(*) FILTER(WHERE score IS NOT NULL)::int AS evaluated_dropoffs,
              COALESCE(SUM(score) FILTER(WHERE score IS NOT NULL),0)::int AS points,
@@ -29,7 +33,7 @@ export default async function handler(req,res){
       FROM inspections
       WHERE mode='dropoff' AND to_char(created_at AT TIME ZONE 'Europe/Madrid','YYYY-MM')=${month}
       GROUP BY driver ORDER BY average DESC NULLS LAST,evaluated_dropoffs DESC,driver ASC`;
-    const recent=await sql`SELECT id,mode,driver,plate,apt,reasons,score_status,score,review_reason,created_at FROM inspections ORDER BY created_at DESC LIMIT 40`;
-    return res.status(200).json({month,reviews:reviews.map(r=>({...r,dropoffPhotos:photoRefs(r.id,r.photos),pickupPhotos:photoRefs(r.pickup_id,r.pickup_photos)})),ranking,recent});
+    const mapRow=r=>({...r,dropoffPhotos:photoRefs(r.id,r.photos),pickupPhotos:r.pickup_id?photoRefs(r.pickup_id,r.pickup_photos):[]});
+    return res.status(200).json({month,reviews:reviews.map(mapRow),dropoffs:dropoffs.map(mapRow),ranking});
   }catch(e){console.error('office data error',e);return res.status(500).json({error:'Office data unavailable'})}
 }
