@@ -3,13 +3,14 @@ const PLATES=['KCV','49 NGM','25 NGM','KVF','MFB','MJB','MPT','90 NGM','KZZ','LB
 const KNOWN_DAMAGE={};
 const DROP_SHOTS=[['front','Exterior · Frontal'],['rear','Exterior · Trasera'],['left','Exterior · Lateral izquierdo'],['right','Exterior · Lateral derecho'],['cabFront','Interior · Zona delantera'],['cabRear','Interior · Zona trasera'],['matsFront','Alfombras delanteras'],['matsRear','Alfombras traseras'],['dashboard','Cuadro · Nivel de combustible']];
 
-function fresh(){return{mode:'',driver:'',plate:'',apt:null,reasons:[],interior:[],exterior:[],desc:{interior:'',exterior:'',mechanics:'',bodywork:''},incidentPhotos:{interior:[],exterior:[],mechanics:[],bodywork:[]},newDamage:null,drop:{exterior:null,interior:null,fuel:null,breakdowns:null,bodywork:null},dropPhotos:{}}}
+function fresh(){return{mode:'',driver:'',plate:'',apt:null,reasons:[],interior:[],exterior:[],desc:{interior:'',exterior:'',mechanics:'',bodywork:''},incidentPhotos:{interior:[],exterior:[],mechanics:[],bodywork:[]},newDamage:null,knownDamageId:null,drop:{exterior:null,interior:null,fuel:null,breakdowns:null,bodywork:null},dropPhotos:{}}}
 let s=fresh();
 let knownDamagePlate='',knownDamageLoading=false;
 const app=document.getElementById('app');
 const fx=document.getElementById('fx');
 
 function opts(a,v){return'<option value="">Selecciona</option>'+a.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function multi(g,x){return`<button class="btn choice ${s[g].includes(x)?'active':''}" onclick="toggleSub('${g}','${x}')">${s[g].includes(x)?'✓ ':''}${x}</button>`}
 function missionProgress(){
   if(!s.mode)return 0;
@@ -50,7 +51,7 @@ async function loadKnownDamagesForPlate(plate){
     const r=await fetch('/api/known-damages?plate='+encodeURIComponent(p),{cache:'no-store'});
     const j=await r.json().catch(()=>({damages:[]}));
     if(!r.ok)throw new Error(j.error||'No se pudieron cargar los daños conocidos');
-    KNOWN_DAMAGE[p]=(j.damages||[]).map(d=>`${d.zone}: ${d.description}`);
+    KNOWN_DAMAGE[p]=j.damages||[];
     knownDamagePlate=p;
     if(s.mode==='pickup'&&s.plate===p)render();
   }catch(e){
@@ -63,6 +64,10 @@ async function loadKnownDamagesForPlate(plate){
 }
 
 function gallery(k){let a=s.incidentPhotos[k];return`<div class="counter">📸 Fotos: ${a.length}/5 · mínimo 1</div>${a.length?`<div class="photos">${a.map((p,i)=>`<div class="photo"><img src="${p}"><button onclick="removeIncidentPhoto('${k}',${i})">×</button></div>`).join('')}</div>`:''}<div id="incident-cam-${k}"></div>${a.length<5?`<button class="btn alt" onclick="startIncidentCamera('${k}')">📷 ${a.length?'Añadir otra foto':'Hacer foto ahora'}</button>`:'<p class="small">Máximo de 5 fotos alcanzado.</p>'}`}
+function knownDamageCards(known){
+  if(!known.length)return'';
+  return `<div class="stack">${known.map(d=>`<div class="evidence ${s.knownDamageId===d.id&&s.newDamage===false?'done':''}"><div class="section-kicker">Daño activo · ${esc(d.zone)}</div><a href="${esc(d.photoSrc)}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(d.photoSrc)}" alt="Daño conocido ${esc(d.zone)}" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;margin:8px 0;border:1px solid #315a6d"></a><p class="small" style="margin:4px 0 10px">${esc(d.description)}</p><button class="btn choice ${s.knownDamageId===d.id&&s.newDamage===false?'active':''}" onclick="s.knownDamageId='${esc(d.id)}';s.newDamage=false;render()">✓ Es este daño conocido</button></div>`).join('')}</div>`;
+}
 function cat(n){
   if(!s.reasons.includes(n))return'';
   if(n==='Limpieza interior')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🧽 Limpieza interior</strong><div class="stack">${['Salpicadero','Asientos','Alfombras','Detalles a fondo','Aguas usadas sin vaciar'].map(x=>multi('interior',x)).join('')}</div><label class="label">Breve descripción</label><textarea placeholder="Ej. Alfombras sucias..." oninput="s.desc.interior=this.value">${s.desc.interior}</textarea><label class="label">Evidencia fotográfica</label>${gallery('interior')}</div>`;
@@ -70,13 +75,13 @@ function cat(n){
   if(n==='Mecánica')return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🔧 Mecánica</strong><label class="label">Describe la avería o anomalía</label><textarea placeholder="Describe qué has observado..." oninput="s.desc.mechanics=this.value">${s.desc.mechanics}</textarea><label class="label">Evidencia fotográfica</label>${gallery('mechanics')}</div>`;
   const known=KNOWN_DAMAGE[s.plate]||[];
   const knownMsg=knownDamageLoading&&knownDamagePlate!==s.plate?'<p class="small">Consultando daños conocidos…</p>':'<p class="small">No hay daños conocidos activos para esta matrícula.</p>';
-  return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🚘 Plancha</strong><div class="known"><strong>Daños ya conocidos</strong>${known.length?`<ul>${known.map(x=>`<li>${x}</li>`).join('')}</ul>`:knownMsg}</div><label class="label">¿Hay un daño nuevo?</label><div class="grid"><button class="btn choice ${s.newDamage===false?'active':''}" onclick="s.newDamage=false;render()">✓ Daño conocido</button><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;render()">⚠️ Daño nuevo</button></div><label class="label">Breve descripción</label><textarea placeholder="Describe el daño..." oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica</label>${gallery('bodywork')}</div>`;
+  return`<div class="subbox"><div class="section-kicker">Evidencia</div><strong>🚘 Plancha</strong><div class="known"><strong>Daños activos conocidos</strong><p class="small">Solo se muestran daños pendientes de reparar. Toca una foto para ampliarla.</p>${known.length?knownDamageCards(known):knownMsg}</div><label class="label">¿Es un daño nuevo?</label><button class="btn choice ${s.newDamage===true?'active':''}" onclick="s.newDamage=true;s.knownDamageId=null;render()">⚠️ Hay un daño nuevo en esta zona</button><label class="label">Breve descripción</label><textarea placeholder="Describe el daño observado..." oninput="s.desc.bodywork=this.value">${s.desc.bodywork}</textarea><label class="label">Evidencia fotográfica actual</label>${gallery('bodywork')}</div>`;
 }
 function dropEvidence(){return DROP_SHOTS.map(([k,l],i)=>`<div class="evidence ${s.dropPhotos[k]?'done':''}"><div class="section-kicker">Foto ${i+1} de 9</div><strong>${l}</strong>${s.dropPhotos[k]?`<div class="cam"><img src="${s.dropPhotos[k]}"></div><button class="btn alt" onclick="startDropCamera('${k}')">↻ Repetir foto</button>`:`<div id="drop-cam-${k}"></div><button class="btn alt" onclick="startDropCamera('${k}')">📷 Hacer foto ahora</button>`}</div>`).join('')}
 
 function render(){
   if(!s.mode){app.innerHTML=`<div class="card"><div class="section-kicker">Nueva misión</div><h2>🎮 ¿Qué vas a hacer?</h2><p class="small">Elige una misión y completa el control en pocos minutos.</p><div class="grid mission-buttons"><button class="btn pickup" onclick="setMode('pickup')"><span class="mission-icon">🚙</span><b>RECOGER<br>VEHÍCULO</b><small>Revisión antes de iniciar servicio</small></button><button class="btn dropoff" onclick="setMode('dropoff')"><span class="mission-icon">🏁</span><b>DEJAR<br>VEHÍCULO</b><small>Deja todo listo para el siguiente</small></button></div></div>`;return}
-  let h=`<div class="card">${missionHeader(s.mode==='pickup'?'Recoger vehículo':'Dejar vehículo')}<label class="label">👤 Conductor</label><select onchange="s.driver=this.value;render()">${opts(DRIVERS,s.driver)}</select><label class="label">🚘 Matrícula</label><select onchange="s.plate=this.value;render()">${opts(PLATES,s.plate)}</select></div>`;
+  let h=`<div class="card">${missionHeader(s.mode==='pickup'?'Recoger vehículo':'Dejar vehículo')}<label class="label">👤 Conductor</label><select onchange="s.driver=this.value;render()">${opts(DRIVERS,s.driver)}</select><label class="label">🚘 Matrícula</label><select onchange="s.plate=this.value;s.knownDamageId=null;s.newDamage=null;knownDamagePlate='';render()">${opts(PLATES,s.plate)}</select></div>`;
   if(s.mode==='pickup'){
     h+=`<div class="card"><div class="section-kicker">Decisión clave</div><h2>¿El vehículo está apto para trabajar?</h2><div class="grid"><button class="btn choice ${s.apt===true?'active':''}" onclick="setApt(true)">✅ Sí, está apto</button><button class="btn choice ${s.apt===false?'active':''}" onclick="setApt(false)">⚠️ No está apto</button></div>${s.apt===true?`<div class="status-banner good"><span class="emoji">🎉</span><h3>¡Todo en orden!</h3><p class="small">Vehículo listo para trabajar.</p></div>`:''}${s.apt===false?`<div class="status-banner bad-news"><span class="emoji">😕</span><h3>Hay algo que revisar</h3><p class="small">Detectarlo es hacer bien la inspección. Documentemos el motivo.</p></div><div class="bad"><strong>¿Por qué no está apto?</strong><div class="stack">${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(r=>`<button class="btn choice ${s.reasons.includes(r)?'active':''}" onclick="toggleReason('${r}')">${s.reasons.includes(r)?'✓ ':''}${r}</button>`).join('')}</div>${['Limpieza interior','Limpieza exterior','Mecánica','Plancha'].map(cat).join('')}</div>`:''}</div>`;
   } else {
@@ -122,7 +127,11 @@ function validate(){
     if(s.reasons.includes('Limpieza interior')&&!validInc('Limpieza interior','interior',true))return false;
     if(s.reasons.includes('Limpieza exterior')&&!validInc('Limpieza exterior','exterior',true))return false;
     if(s.reasons.includes('Mecánica')&&!validInc('Mecánica','mechanics',false))return false;
-    if(s.reasons.includes('Plancha')){if(s.newDamage===null){alert('Indica si el daño es conocido o nuevo.');return false}if(!validInc('Plancha','bodywork',false))return false}
+    if(s.reasons.includes('Plancha')){
+      if(s.newDamage===null){alert('Indica si coincide con un daño conocido o si es un daño nuevo.');return false}
+      if(s.newDamage===false&&!s.knownDamageId){alert('Selecciona cuál de los daños conocidos coincide.');return false}
+      if(!validInc('Plancha','bodywork',false))return false;
+    }
   }else{
     if(Object.values(s.drop).some(v=>v===null)){alert('Completa los cinco puntos.');return false}
     const missing=DROP_SHOTS.filter(([k])=>!s.dropPhotos[k]);if(missing.length){alert('Faltan '+missing.length+' fotos obligatorias de la dejada.');return false}
@@ -153,7 +162,7 @@ async function finish(){
   app.innerHTML=`<div class="card saving"><div class="section-kicker">Guardando misión</div><h2>Subiendo inspección…</h2><p class="small">Fotografías y datos se están guardando de forma segura. No cierres esta pantalla.</p></div>`;
   try{
     const photos=await uploadAllPhotos();
-    const payload={mode:snapshot.mode,driver:snapshot.driver,plate:snapshot.plate,apt:snapshot.mode==='pickup'?snapshot.apt:null,reasons:snapshot.reasons,details:{interior:snapshot.interior,exterior:snapshot.exterior,descriptions:snapshot.desc,newDamage:snapshot.newDamage},photos,checklist:snapshot.mode==='dropoff'?snapshot.drop:{}};
+    const payload={mode:snapshot.mode,driver:snapshot.driver,plate:snapshot.plate,apt:snapshot.mode==='pickup'?snapshot.apt:null,reasons:snapshot.reasons,details:{interior:snapshot.interior,exterior:snapshot.exterior,descriptions:snapshot.desc,newDamage:snapshot.newDamage,knownDamageId:snapshot.knownDamageId},photos,checklist:snapshot.mode==='dropoff'?snapshot.drop:{}};
     const r=await fetch('/api/inspection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const result=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(result.error||'No se pudo guardar la inspección');
